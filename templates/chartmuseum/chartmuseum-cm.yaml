@@ -11,6 +11,9 @@ data:
   CACHE_REDIS_ADDR: "{{ template "harbor.redis.host" . }}:{{ template "harbor.redis.port" . }}"
   CACHE_REDIS_DB: "{{ template "harbor.redis.chartmuseumDatabaseIndex" . }}"
   BASIC_AUTH_USER: "chart_controller"
+{{- if .Values.chartmuseum.absoluteUrl }}
+  CHART_URL: {{ .Values.externalURL }}/chartrepo
+{{- end }}
   DEPTH: "1"
 {{- if eq .Values.logLevel "debug" }}
   DEBUG: "true"
@@ -22,11 +25,11 @@ data:
   DISABLE_API: "false"
   DISABLE_STATEFILES: "false"
   ALLOW_OVERWRITE: "true"
-  CHART_URL:
+  #CHART_URL: {{ .Values.externalURL }}/chartrepo
   AUTH_ANONYMOUS_GET: "false"
-  TLS_CERT:
-  TLS_KEY:
-  CONTEXT_PATH:
+  TLS_CERT: ""
+  TLS_KEY: ""
+  CONTEXT_PATH: ""
   INDEX_LIMIT: "0"
   MAX_STORAGE_OBJECTS: "0"
   MAX_UPLOAD_SIZE: "20971520"
@@ -45,6 +48,7 @@ data:
 {{- else if eq $storageType "gcs" }}
   STORAGE: "google"
   STORAGE_GOOGLE_BUCKET: {{ $storage.gcs.bucket }}
+  GOOGLE_APPLICATION_CREDENTIALS: /etc/chartmuseum/gcs-key.json
   {{- if $storage.gcs.rootdirectory }}
   STORAGE_GOOGLE_PREFIX: {{ $storage.gcs.rootdirectory }}
   {{- end }}

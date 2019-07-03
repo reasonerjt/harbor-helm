@@ -17,7 +17,18 @@ spec:
       labels:
 {{ include "harbor.labels" . | indent 8 }}
         component: chartmuseum
+      annotations:
+        checksum/configmap: {{ include (print $.Template.BasePath "/chartmuseum/chartmuseum-cm.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/chartmuseum/chartmuseum-secret.yaml") . | sha256sum }}
+        checksum/secret-core: {{ include (print $.Template.BasePath "/core/core-secret.yaml") . | sha256sum }}
+{{- if .Values.chartmuseum.podAnnotations }}
+{{ toYaml .Values.chartmuseum.podAnnotations | indent 8 }}
+{{- end }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: chartmuseum
         image: {{ .Values.chartmuseum.image.repository }}:{{ .Values.chartmuseum.image.tag }}
@@ -34,8 +45,10 @@ spec:
             port: 9999
           initialDelaySeconds: 1
           periodSeconds: 10
+{{- if .Values.chartmuseum.resources }}
         resources:
 {{ toYaml .Values.chartmuseum.resources | indent 10 }}
+{{- end }}
         envFrom:
         - configMapRef:
             name: "{{ template "harbor.chartmuseum" . }}"
@@ -53,6 +66,11 @@ spec:
         - name: chartmuseum-data
           mountPath: /chart_storage
           subPath: {{ .Values.persistence.persistentVolumeClaim.chartmuseum.subPath }}
+        {{- if and .Values.persistence.enabled (eq .Values.persistence.imageChartStorage.type "gcs") }}
+        - name: gcs-key
+          mountPath: /etc/chartmuseum/gcs-key.json
+          subPath: gcs-key.json
+        {{- end }}
       volumes:
       - name: chartmuseum-data
       {{- if and .Values.persistence.enabled (eq .Values.persistence.imageChartStorage.type "filesystem") }}
@@ -60,6 +78,14 @@ spec:
           claimName: {{ .Values.persistence.persistentVolumeClaim.chartmuseum.existingClaim | default (include "harbor.chartmuseum" .) }}
       {{- else }}
         emptyDir: {}
+      {{- end }}
+      {{- if and .Values.persistence.enabled (eq .Values.persistence.imageChartStorage.type "gcs") }}
+      - name: gcs-key
+        secret:
+          secretName: {{ template "harbor.registry" . }}
+          items:
+            - key: GCS_KEY_DATA
+              path: gcs-key.json
       {{- end }}
       {{- with .Values.chartmuseum.nodeSelector }}
       nodeSelector:

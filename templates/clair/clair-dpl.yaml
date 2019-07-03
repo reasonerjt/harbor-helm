@@ -17,7 +17,16 @@ spec:
       labels:
 {{ include "harbor.labels" . | indent 8 }}
         component: clair
+      annotations:
+        checksum/configmap: {{ include (print $.Template.BasePath "/clair/clair-cm.yaml") . | sha256sum }}
+{{- if .Values.clair.podAnnotations }}
+{{ toYaml .Values.clair.podAnnotations | indent 8 }}
+{{- end }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: clair
         image: {{ .Values.clair.image.repository }}:{{ .Values.clair.image.tag }}
@@ -46,8 +55,10 @@ spec:
         {{- end }}
         - name: NO_PROXY
           value: "{{ template "harbor.registry" . }},{{ template "harbor.core" . }}"
+{{- if .Values.clair.resources }}
         resources:
 {{ toYaml .Values.clair.resources | indent 10 }}
+{{- end }}
         ports:
         - containerPort: 6060
         volumeMounts:

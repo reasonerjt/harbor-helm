@@ -16,7 +16,19 @@ spec:
       labels:
 {{ include "harbor.labels" . | indent 8 }}
         component: registry
+      annotations:
+        checksum/configmap: {{ include (print $.Template.BasePath "/registry/registry-cm.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/registry/registry-secret.yaml") . | sha256sum }}
+        checksum/secret-jobservice: {{ include (print $.Template.BasePath "/jobservice/jobservice-secrets.yaml") . | sha256sum }}
+        checksum/secret-core: {{ include (print $.Template.BasePath "/core/core-secret.yaml") . | sha256sum }}
+{{- if .Values.registry.podAnnotations }}
+{{ toYaml .Values.registry.podAnnotations | indent 8 }}
+{{- end }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: registry
         image: {{ .Values.registry.registry.image.repository }}:{{ .Values.registry.registry.image.tag }}
@@ -33,8 +45,10 @@ spec:
             port: 5000
           initialDelaySeconds: 1
           periodSeconds: 10
+{{- if .Values.registry.registry.resources }}
         resources:
-{{ toYaml .Values.registry.resources | indent 10 }}
+{{ toYaml .Values.registry.registry.resources | indent 10 }}
+{{- end }}
         args: ["serve", "/etc/registry/config.yml"]
         envFrom:
         - secretRef:
@@ -48,10 +62,15 @@ spec:
           subPath: {{ .Values.persistence.persistentVolumeClaim.registry.subPath }}
         - name: registry-root-certificate
           mountPath: /etc/registry/root.crt
-          subPath: tokenServiceRootCertBundle
+          subPath: tls.crt
         - name: registry-config
           mountPath: /etc/registry/config.yml
           subPath: config.yml
+        {{- if and .Values.persistence.enabled (eq .Values.persistence.imageChartStorage.type "gcs") }}
+        - name: gcs-key
+          mountPath: /etc/registry/gcs-key.json
+          subPath: gcs-key.json
+        {{- end }}
       - name: registryctl
         image: {{ .Values.registry.controller.image.repository }}:{{ .Values.registry.controller.image.tag }}
         imagePullPolicy: {{ .Values.imagePullPolicy }}
@@ -67,8 +86,10 @@ spec:
             port: 8080
           initialDelaySeconds: 1
           periodSeconds: 10
+{{- if .Values.registry.controller.resources }}
         resources:
-{{ toYaml .Values.registry.resources | indent 10 }}
+{{ toYaml .Values.registry.controller.resources | indent 10 }}
+{{- end }}
         args: ["serve", "/etc/registry/config.yml"]
         envFrom:
         - secretRef:
@@ -82,7 +103,7 @@ spec:
           - name: JOBSERVICE_SECRET
             valueFrom:
               secretKeyRef:
-                name: "{{ template "harbor.fullname" . }}-jobservice"
+                name: {{ template "harbor.jobservice" . }}
                 key: secret
         ports:
         - containerPort: 8080
@@ -99,7 +120,11 @@ spec:
       volumes:
       - name: registry-root-certificate
         secret:
+          {{- if .Values.core.secretName }}
+          secretName: {{ .Values.core.secretName }}
+          {{- else }}
           secretName: {{ template "harbor.core" . }}
+          {{- end }}
       - name: registry-config
         configMap:
           name: "{{ template "harbor.registry" . }}"
@@ -109,6 +134,14 @@ spec:
           claimName: {{ .Values.persistence.persistentVolumeClaim.registry.existingClaim | default (include "harbor.registry" .) }}
       {{- else }}
         emptyDir: {}
+      {{- end }}
+      {{- if and .Values.persistence.enabled (eq .Values.persistence.imageChartStorage.type "gcs") }}
+      - name: gcs-key
+        secret:
+          secretName: {{ template "harbor.registry" . }}
+          items:
+            - key: GCS_KEY_DATA
+              path: gcs-key.json
       {{- end }}
     {{- with .Values.registry.nodeSelector }}
       nodeSelector:
